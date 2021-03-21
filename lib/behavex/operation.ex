@@ -46,6 +46,8 @@ defmodule Behavex.Operation do
       @behaviour unquote(__MODULE__)
       import unquote(__MODULE__), only: [get_name: 1, get_children: 1]
 
+      require Logger
+
       @doc """
       Convenience function for creating new instances
       """
@@ -54,6 +56,9 @@ defmodule Behavex.Operation do
       def create(name, args \\ [], specs \\ []) do
         unquote(__MODULE__).create(name, __MODULE__, args, specs)
       end
+
+      # Convenience delegates
+      defdelegate equiv?(a, b), to: unquote(__MODULE__)
 
       @doc false
       @impl true
@@ -170,6 +175,17 @@ defmodule Behavex.Operation do
   end
 
   def preempt(state), do: {:ok, state}
+
+  @doc """
+  Compares two operations checking for equivalency
+  Returns true iff callback module names and operation names match
+  """
+  @spec equiv?(t(), t()) :: boolean()
+  def equiv?(%__MODULE__{cb: cb1, name: name1}, %__MODULE__{cb: cb2, name: name2}) do
+    cb1 == cb2 and name1 == name2
+  end
+
+  def equiv?(_, _), do: false
 
   defp add_children(%__MODULE__{children: []} = state, []), do: {:ok, state}
 

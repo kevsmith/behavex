@@ -216,6 +216,14 @@ defmodule Behavex.OperationTest do
     assert :invalid == Operation.get_status(op)
   end
 
+  test "equivalency checks work as expected" do
+    {:ok, op1} = ErrorOperation.create("op1")
+    {:ok, op2} = ErrorOperation.create("op2")
+    assert ErrorOperation.equiv?(op1, op1)
+    assert ErrorOperation.equiv?(op2, op2)
+    refute ErrorOperation.equiv?(op1, op2)
+  end
+
   defp mock_operation(args \\ []) do
     Operation.create("Mock", MockOperation, args)
   end
