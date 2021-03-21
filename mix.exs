@@ -25,7 +25,10 @@ defmodule Behavex.MixProject do
     [
       {:elixir_uuid, "~> 1.2.0"},
       {:phoenix_pubsub, "~> 2.0.0"},
-      {:shortuuid, "~> 2.1.0"}
+      {:shortuuid, "~> 2.1.0"},
+
+      # Testing deps
+      {:mox, "~> 1.0.0", only: [:test]}
     ]
   end
 
