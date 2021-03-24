@@ -1,6 +1,6 @@
 # Behavex
 
-**TODO: Add description**
+Pure Elixir behavior tree implementation
 
 ## Installation
 

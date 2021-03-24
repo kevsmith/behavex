@@ -1,4 +1,6 @@
 defmodule Behavex.Operation do
+  require Logger
+
   defstruct name: nil, children: [], status: nil, cb: nil, cb_state: nil
 
   @opaque t :: %Behavex.Operation{}
@@ -25,15 +27,16 @@ defmodule Behavex.Operation do
   @callback teardown(
               state :: term(),
               old_status :: Behavex.status(),
-              new_status :: Behavex.status()
-            ) :: {:ok, term()} | :error
+              new_status :: Behavex.status(),
+              operation_environment :: t()
+            ) :: {:ok, term(), t()} | :error
 
   @doc """
   Called on every tick which represents a meangingful increment
   of time has passed in the simulation/world
   """
   @callback on_tick(state :: term(), operation_environment :: t()) ::
-              {:ok, Behavex.status(), term()} | :error
+              {:ok, Behavex.status(), term(), t()} | :error
 
   @doc """
   Called before a child operation is added. Returning false will
@@ -44,7 +47,8 @@ defmodule Behavex.Operation do
   defmacro __using__(_) do
     quote do
       @behaviour unquote(__MODULE__)
-      import unquote(__MODULE__), only: [get_name: 1, get_children: 1]
+      import unquote(__MODULE__),
+        only: [get_name: 1, get_children: 1, tick_child: 2, preempt_child: 2]
 
       require Logger
 
@@ -66,13 +70,13 @@ defmodule Behavex.Operation do
 
       @doc false
       @impl true
-      def teardown(state, _old_status, _new_status), do: {:ok, state}
+      def teardown(state, _old_status, _new_status, env), do: {:ok, state, env}
 
       @doc false
       @impl true
       def children_allowed?(_state), do: false
 
-      defoverridable prepare: 1, teardown: 3, children_allowed?: 1
+      defoverridable prepare: 1, teardown: 4, children_allowed?: 1
     end
   end
 
@@ -132,10 +136,11 @@ defmodule Behavex.Operation do
   @spec tick(t()) :: {:ok, Behavex.status(), t()} | :error
   def tick(%__MODULE__{status: :invalid, cb: cb, cb_state: cb_state} = state) do
     with {:ok, new_cb_state} <- cb.prepare(cb_state) do
-      with {:ok, new_status, new_cb_state} <- cb.on_tick(new_cb_state, state) do
+      with {:ok, new_status, new_cb_state, %__MODULE__{} = state} <-
+             cb.on_tick(new_cb_state, state) do
         if new_status != :running do
-          case cb.teardown(new_cb_state, state.status, new_status) do
-            {:ok, new_cb_state} ->
+          case cb.teardown(new_cb_state, state.status, new_status, state) do
+            {:ok, new_cb_state, state} ->
               {:ok, new_status, %{state | status: :invalid, cb_state: new_cb_state}}
 
             :error ->
@@ -149,10 +154,10 @@ defmodule Behavex.Operation do
   end
 
   def tick(%__MODULE__{cb: cb, cb_state: cb_state} = state) do
-    with {:ok, new_status, new_cb_state} <- cb.on_tick(cb_state, state) do
+    with {:ok, new_status, new_cb_state, %__MODULE__{} = state} <- cb.on_tick(cb_state, state) do
       if new_status != :running do
-        case cb.teardown(new_cb_state, state.status, new_status) do
-          {:ok, new_cb_state} ->
+        case cb.teardown(new_cb_state, state.status, new_status, state) do
+          {:ok, new_cb_state, state} ->
             {:ok, new_status, %{state | status: :invalid, cb_state: new_cb_state}}
 
           :error ->
@@ -165,11 +170,72 @@ defmodule Behavex.Operation do
   end
 
   @doc """
+  Performs a single tick on a child
+
+  Returns `:error` if operation has no children or if index is out of bounds
+  """
+  @spec tick_child(t(), integer()) :: {:ok, Behavex.status(), t()} | :error
+  def tick_child(%__MODULE__{children: children} = state, index)
+      when index > -1 and index < length(children) do
+    {prefix, [target | suffix]} = Enum.split(children, index)
+
+    case tick(target) do
+      {:ok, status, target} ->
+        {:ok, status, %{state | children: prefix ++ [target] ++ suffix}}
+
+      :error ->
+        :error
+    end
+  end
+
+  def tick_child(%__MODULE__{}, _index), do: :error
+
+  @doc """
+  Sends preemption signal to a child
+
+  Returns `:error` if operation has no children or if index is out of bounds
+  """
+  @spec preempt_child(t(), integer()) :: {:ok, t()} | :error
+  def preempt_child(%__MODULE__{children: children} = state, index)
+      when index > -1 and index < length(children) do
+    {prefix, [target | suffix]} = Enum.split(children, index)
+
+    case preempt(target) do
+      {:ok, target} ->
+        {:ok, %{state | children: prefix ++ [target] ++ suffix}}
+
+      :error ->
+        :error
+    end
+  end
+
+  def preempt_child(_state, _index), do: :error
+
+  @doc """
+  Sends teardown signal to a child
+
+  Returns `:error` if operation has no children or if index is out of bounds
+  """
+  @spec teardown_child(t(), integer()) :: {:ok, t()} | :error
+  def teardown_child(%__MODULE__{children: children} = state, index, old_status, new_status)
+      when index > -1 and index < length(children) do
+    {prefix, [target | suffix]} = Enum.split(children, index)
+    %__MODULE__{cb: cb, cb_state: cb_state} = target
+
+    with {:ok, new_cb_state, new_state} <- cb.teardown(cb_state, old_status, new_status, state) do
+      new_target = %{target | cb_state: new_cb_state}
+      {:ok, %{new_state | children: prefix ++ [new_target] ++ suffix}}
+    end
+  end
+
+  def teardown_child(_state, _index), do: :error
+
+  @doc """
   Tells an operation it has been pre-empted by a higher priority operation
   """
   @spec preempt(t()) :: {:ok, t()} | :error
   def preempt(%__MODULE__{cb: cb, cb_state: cb_state, status: :running} = state) do
-    with {:ok, new_cb_state} <- cb.teardown(cb_state, :running, :invalid) do
+    with {:ok, new_cb_state, state} <- cb.teardown(cb_state, :running, :invalid, state) do
       {:ok, %{state | cb_state: new_cb_state, status: :invalid}}
     end
   end
@@ -228,6 +294,16 @@ defmodule Behavex.Operation do
 
       :error ->
         :error
+    end
+  end
+
+  defimpl Inspect do
+    import Inspect.Algebra
+
+    alias Behavex.Operation
+
+    def inspect(%Operation{cb: cb}, opts) do
+      concat(["#Behavex.Operation<", to_doc(cb, opts), ">"])
     end
   end
 end
