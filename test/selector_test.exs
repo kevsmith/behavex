@@ -17,8 +17,8 @@ defmodule Behavex.SelectorOperationTest do
 
     {:ok, selector} =
       Selector.create("selector", [], [
-        {"first", HighPriorityOperation},
-        {"second", LowPriorityOperation}
+        {"first", HighPriorityOperation, []},
+        {"second", LowPriorityOperation, []}
       ])
 
     assert_ticks(selector, [:success])
@@ -39,8 +39,8 @@ defmodule Behavex.SelectorOperationTest do
 
     {:ok, selector} =
       Selector.create("selector", [], [
-        {"first", HighPriorityOperation},
-        {"second", LowPriorityOperation}
+        {"first", HighPriorityOperation, []},
+        {"second", LowPriorityOperation, []}
       ])
 
     assert_ticks(selector, [:running, :success])
@@ -67,9 +67,9 @@ defmodule Behavex.SelectorOperationTest do
 
     {:ok, selector} =
       Selector.create("selector", [], [
-        {"hi", HighPriorityOperation},
-        {"mid", MediumPriorityOperation},
-        {"lo", LowPriorityOperation}
+        {"hi", HighPriorityOperation, []},
+        {"mid", MediumPriorityOperation, []},
+        {"lo", LowPriorityOperation, []}
       ])
 
     assert_ticks(selector, [:running, :success])
@@ -90,8 +90,8 @@ defmodule Behavex.SelectorOperationTest do
 
     {:ok, selector} =
       Selector.create("selector", [], [
-        {"first", HighPriorityOperation},
-        {"second", LowPriorityOperation}
+        {"first", HighPriorityOperation, []},
+        {"second", LowPriorityOperation, []}
       ])
 
     assert_ticks(selector, [:running, :error])
@@ -114,8 +114,8 @@ defmodule Behavex.SelectorOperationTest do
 
     {:ok, selector} =
       Selector.create("selector", [], [
-        {"hi", HighPriorityOperation},
-        {"lo", LowPriorityOperation}
+        {"hi", HighPriorityOperation, []},
+        {"lo", LowPriorityOperation, []}
       ])
 
     assert_ticks(selector, [:failure, :failure, :failure])
@@ -134,8 +134,8 @@ defmodule Behavex.SelectorOperationTest do
 
     {:ok, selector} =
       Selector.create("selector", [], [
-        {"hi", HighPriorityOperation},
-        {"lo", LowPriorityOperation}
+        {"hi", HighPriorityOperation, []},
+        {"lo", LowPriorityOperation, []}
       ])
 
     assert {:ok, _selector} = Behavex.Operation.preempt(selector)
@@ -154,8 +154,8 @@ defmodule Behavex.SelectorOperationTest do
 
     {:ok, selector} =
       Selector.create("selector", [], [
-        {"hi", HighPriorityOperation},
-        {"lo", LowPriorityOperation}
+        {"hi", HighPriorityOperation, []},
+        {"lo", LowPriorityOperation, []}
       ])
 
     assert :error = Behavex.Operation.tick(selector)
@@ -175,8 +175,8 @@ defmodule Behavex.SelectorOperationTest do
 
     {:ok, selector} =
       Selector.create("selector", [], [
-        {"hi", HighPriorityOperation},
-        {"lo", LowPriorityOperation}
+        {"hi", HighPriorityOperation, []},
+        {"lo", LowPriorityOperation, []}
       ])
 
     assert {:ok, :running, selector} = Behavex.Operation.tick(selector)

@@ -75,7 +75,7 @@ defmodule Behavex.OperationTest do
     |> expect(:init, fn _ -> {:ok, 1} end)
     |> expect(:children_allowed?, fn _ -> true end)
 
-    children = [{"1", ErrorOperation}, {"2", ErrorOperation}]
+    children = [{"1", ErrorOperation, []}, {"2", ErrorOperation, []}]
     {:ok, op} = Operation.create("Mock", MockOperation, [], children)
     assert 2 == Enum.count(Operation.get_children(op))
   end
@@ -95,7 +95,7 @@ defmodule Behavex.OperationTest do
     |> expect(:init, fn _ -> {:ok, 1} end)
     |> expect(:children_allowed?, fn _ -> true end)
 
-    children = for x <- 1..5, do: {"#{x}", ErrorOperation}
+    children = for x <- 1..5, do: {"#{x}", ErrorOperation, []}
     {:ok, op} = Operation.create("Mock", MockOperation, [], children)
     children = Operation.get_children(op)
     assert 5 = Enum.count(children)
@@ -106,29 +106,15 @@ defmodule Behavex.OperationTest do
     end)
   end
 
-  test "struct specs work" do
-    MockOperation
-    |> expect(:init, fn _ -> {:ok, 1} end)
-    |> expect(:children_allowed?, fn _ -> true end)
-
-    children =
-      for x <- 1..5 do
-        {:ok, op} = ErrorOperation.create("#{x}", [x])
-        op
-      end
-
-    {:ok, op} = Operation.create("Mock", MockOperation, [], children)
-    assert 5 == Enum.count(Operation.get_children(op))
-  end
-
   test "mixed specs work" do
     MockOperation
     |> expect(:init, fn _ -> {:ok, 1} end)
     |> expect(:children_allowed?, fn _ -> true end)
 
-    children = [{"2", ErrorOperation}, {"3", ErrorOperation, []}]
-    {:ok, child} = Operation.create("1", ErrorOperation)
-    {:ok, op} = Operation.create("Mock", MockOperation, [], [child | children])
+    f = fn -> Operation.create("1", ErrorOperation) end
+
+    children = [{"2", ErrorOperation, []}, {"3", ErrorOperation, []}]
+    {:ok, op} = Operation.create("Mock", MockOperation, [], [f | children])
     stored_children = Operation.get_children(op)
     assert 3 == Enum.count(stored_children)
     assert ["1", "2", "3"] == Enum.map(stored_children, &Operation.get_name(&1))

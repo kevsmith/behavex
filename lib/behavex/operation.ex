@@ -4,7 +4,8 @@ defmodule Behavex.Operation do
   defstruct name: nil, children: [], status: nil, cb: nil, cb_state: nil
 
   @opaque t :: %Behavex.Operation{}
-  @type child_spec :: t() | {String.t(), module()} | {String.t(), module(), list(term())}
+  @type child_fun :: (() -> {:ok, t()} | :error)
+  @type child_spec :: t() | child_fun() | {String.t(), module(), list(term())}
   @type child_specs :: [] | [child_spec()]
 
   @doc """
@@ -174,20 +175,9 @@ defmodule Behavex.Operation do
     add_children(%{state | children: [op_state | state.children]}, t)
   end
 
-  defp add_children(state, [{name, callback} | t]) do
-    case callback.init([]) do
-      {:ok, internal_state} ->
-        child = %__MODULE__{
-          name: name,
-          cb: callback,
-          cb_state: internal_state,
-          status: :invalid
-        }
-
-        add_children(%{state | children: [child | state.children]}, t)
-
-      :error ->
-        :error
+  defp add_children(state, [child_fun | t]) when is_function(child_fun) do
+    with {:ok, child} <- child_fun.() do
+      add_children(%{state | children: [child | state.children]}, t)
     end
   end
 
