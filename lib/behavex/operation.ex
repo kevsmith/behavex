@@ -6,7 +6,6 @@ defmodule Behavex.Operation do
   @opaque t :: %Behavex.Operation{}
   @type child_spec :: t() | {String.t(), module()} | {String.t(), module(), list(term())}
   @type child_specs :: [] | [child_spec()]
-  @type children :: [] | [t()]
 
   @doc """
   Called when operation instance is created
@@ -14,29 +13,17 @@ defmodule Behavex.Operation do
   @callback init(args :: list()) :: {:ok, term()} | :error
 
   @doc """
-  Called when operation transitions from :invalid to :running
-  """
-  @callback prepare(state :: term()) :: {:ok, term()} | :error
-
-  @doc """
-  Called when one of the following occurs:
-
-  * Operation is pre-empted by higher priority operation
-  * Operation has transitioned to :success or :failure
-  """
-  @callback teardown(
-              state :: term(),
-              old_status :: Behavex.status(),
-              new_status :: Behavex.status(),
-              operation_environment :: t()
-            ) :: {:ok, term(), t()} | :error
-
-  @doc """
   Called on every tick which represents a meangingful increment
   of time has passed in the simulation/world
   """
   @callback on_tick(state :: term(), operation_environment :: t()) ::
               {:ok, Behavex.status(), term(), t()} | :error
+
+  @doc """
+  Called when an operation is preempted
+  """
+  @callback on_preempt(state :: term(), operation_environment :: t()) ::
+              {:ok, term(), t()} | :error
 
   @doc """
   Called before a child operation is added. Returning false will
@@ -48,7 +35,10 @@ defmodule Behavex.Operation do
     quote do
       @behaviour unquote(__MODULE__)
       import unquote(__MODULE__),
-        only: [get_name: 1, get_children: 1, tick_child: 2, preempt_child: 2]
+        only: [
+          get_name: 1,
+          update_child_states: 3
+        ]
 
       require Logger
 
@@ -66,17 +56,13 @@ defmodule Behavex.Operation do
 
       @doc false
       @impl true
-      def prepare(state), do: {:ok, state}
-
-      @doc false
-      @impl true
-      def teardown(state, _old_status, _new_status, env), do: {:ok, state, env}
-
-      @doc false
-      @impl true
       def children_allowed?(_state), do: false
 
-      defoverridable prepare: 1, teardown: 4, children_allowed?: 1
+      @doc false
+      @impl true
+      def on_preempt(state, env), do: {:ok, state, env}
+
+      defoverridable children_allowed?: 1, on_preempt: 2
     end
   end
 
@@ -121,126 +107,51 @@ defmodule Behavex.Operation do
   def get_name(%__MODULE__{name: name}), do: name
 
   @doc """
-  Returns Operation's children
+  Uses `Enum.reduce_while/3` to apply a function to all
+  child states
   """
-  @spec get_children(t()) :: children()
-  def get_children(%__MODULE__{children: children}), do: children
+  def update_child_states(%__MODULE__{children: children} = state, data, mutator) do
+    {new_data, new_children} =
+      children
+      |> Enum.with_index()
+      |> Enum.reduce_while({data, []}, fn {child, index}, {data, acc} ->
+        case mutator.(child, index, data, acc) do
+          {:cont, data, acc} ->
+            {:cont, {data, acc}}
+
+          {:halt, data, acc} ->
+            {:halt, {data, acc}}
+        end
+      end)
+
+    {new_data, finish_update(state, Enum.reverse(new_children))}
+  end
+
+  def get_status(%__MODULE__{status: status}), do: status
 
   if Mix.env() == :test do
-    def get_status(%__MODULE__{status: status}), do: status
+    def get_children(%__MODULE__{children: children}), do: children
   end
 
   @doc """
   Performs a single tick
   """
   @spec tick(t()) :: {:ok, Behavex.status(), t()} | :error
-  def tick(%__MODULE__{status: :invalid, cb: cb, cb_state: cb_state} = state) do
-    with {:ok, new_cb_state} <- cb.prepare(cb_state) do
-      with {:ok, new_status, new_cb_state, %__MODULE__{} = state} <-
-             cb.on_tick(new_cb_state, state) do
-        if new_status != :running do
-          case cb.teardown(new_cb_state, state.status, new_status, state) do
-            {:ok, new_cb_state, state} ->
-              {:ok, new_status, %{state | status: :invalid, cb_state: new_cb_state}}
-
-            :error ->
-              :error
-          end
-        else
-          {:ok, new_status, %{state | status: new_status, cb_state: new_cb_state}}
-        end
-      end
-    end
-  end
-
   def tick(%__MODULE__{cb: cb, cb_state: cb_state} = state) do
     with {:ok, new_status, new_cb_state, %__MODULE__{} = state} <- cb.on_tick(cb_state, state) do
-      if new_status != :running do
-        case cb.teardown(new_cb_state, state.status, new_status, state) do
-          {:ok, new_cb_state, state} ->
-            {:ok, new_status, %{state | status: :invalid, cb_state: new_cb_state}}
-
-          :error ->
-            :error
-        end
-      else
-        {:ok, new_status, %{state | status: new_status, cb_state: new_cb_state}}
-      end
+      {:ok, new_status, %{state | status: new_status, cb_state: new_cb_state}}
     end
   end
-
-  @doc """
-  Performs a single tick on a child
-
-  Returns `:error` if operation has no children or if index is out of bounds
-  """
-  @spec tick_child(t(), integer()) :: {:ok, Behavex.status(), t()} | :error
-  def tick_child(%__MODULE__{children: children} = state, index)
-      when index > -1 and index < length(children) do
-    {prefix, [target | suffix]} = Enum.split(children, index)
-
-    case tick(target) do
-      {:ok, status, target} ->
-        {:ok, status, %{state | children: prefix ++ [target] ++ suffix}}
-
-      :error ->
-        :error
-    end
-  end
-
-  def tick_child(%__MODULE__{}, _index), do: :error
-
-  @doc """
-  Sends preemption signal to a child
-
-  Returns `:error` if operation has no children or if index is out of bounds
-  """
-  @spec preempt_child(t(), integer()) :: {:ok, t()} | :error
-  def preempt_child(%__MODULE__{children: children} = state, index)
-      when index > -1 and index < length(children) do
-    {prefix, [target | suffix]} = Enum.split(children, index)
-
-    case preempt(target) do
-      {:ok, target} ->
-        {:ok, %{state | children: prefix ++ [target] ++ suffix}}
-
-      :error ->
-        :error
-    end
-  end
-
-  def preempt_child(_state, _index), do: :error
-
-  @doc """
-  Sends teardown signal to a child
-
-  Returns `:error` if operation has no children or if index is out of bounds
-  """
-  @spec teardown_child(t(), integer()) :: {:ok, t()} | :error
-  def teardown_child(%__MODULE__{children: children} = state, index, old_status, new_status)
-      when index > -1 and index < length(children) do
-    {prefix, [target | suffix]} = Enum.split(children, index)
-    %__MODULE__{cb: cb, cb_state: cb_state} = target
-
-    with {:ok, new_cb_state, new_state} <- cb.teardown(cb_state, old_status, new_status, state) do
-      new_target = %{target | cb_state: new_cb_state}
-      {:ok, %{new_state | children: prefix ++ [new_target] ++ suffix}}
-    end
-  end
-
-  def teardown_child(_state, _index), do: :error
 
   @doc """
   Tells an operation it has been pre-empted by a higher priority operation
   """
   @spec preempt(t()) :: {:ok, t()} | :error
-  def preempt(%__MODULE__{cb: cb, cb_state: cb_state, status: :running} = state) do
-    with {:ok, new_cb_state, state} <- cb.teardown(cb_state, :running, :invalid, state) do
-      {:ok, %{state | cb_state: new_cb_state, status: :invalid}}
+  def preempt(%__MODULE__{cb: cb, cb_state: cb_state} = state) do
+    with {:ok, new_cb_state, new_state} <- cb.on_preempt(cb_state, state) do
+      {:ok, %{new_state | cb_state: new_cb_state, status: :invalid}}
     end
   end
-
-  def preempt(state), do: {:ok, state}
 
   @doc """
   Compares two operations checking for equivalency
@@ -297,13 +208,24 @@ defmodule Behavex.Operation do
     end
   end
 
+  defp finish_update(%__MODULE__{children: children} = state, new_children)
+       when length(children) == length(new_children) do
+    %{state | children: new_children}
+  end
+
+  defp finish_update(%__MODULE__{children: children} = state, new_children) do
+    new_names = Enum.map(new_children, &get_name(&1))
+    remaining = Enum.filter(children, &(Enum.member?(new_names, get_name(&1)) == false))
+    %{state | children: new_children ++ remaining}
+  end
+
   defimpl Inspect do
     import Inspect.Algebra
 
     alias Behavex.Operation
 
-    def inspect(%Operation{cb: cb}, opts) do
-      concat(["#Behavex.Operation<", to_doc(cb, opts), ">"])
+    def inspect(%Operation{cb: cb, name: name}, opts) do
+      concat(["#<", to_doc(cb, opts), ">(name:", to_doc(name, opts), ")"])
     end
   end
 end

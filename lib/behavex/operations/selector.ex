@@ -4,69 +4,80 @@ defmodule Behavex.Operations.Selector do
   defstruct last_index: -1
 
   @impl true
-  def init(_) do
-    {:ok, %__MODULE__{}}
+  def init(_), do: {:ok, %__MODULE__{}}
+
+  @impl true
+  def children_allowed?(_state), do: true
+
+  @impl true
+  def on_tick(state, env) do
+    case update_child_states(env, state, &tick_child/4) do
+      {{:error, _state}, _env} ->
+        :error
+
+      {{status, state}, env} ->
+        {:ok, status, state, env}
+
+      {state, env} ->
+        {:ok, :failure, state, env}
+    end
   end
 
   @impl true
-  def children_allowed?(%__MODULE__{}), do: true
+  def on_preempt(state, env) do
+    case update_child_states(env, state, &preempt_child/4) do
+      {{:error, _state}, _env} ->
+        :error
 
-  @impl true
-  def on_tick(%__MODULE__{} = state, env) do
-    tick_children(state, env)
+      {state, env} ->
+        {:ok, state, env}
+    end
   end
 
-  @impl true
-  def teardown(%__MODULE__{} = state, _old_status, _new_status, env) do
-    {:ok, state, env}
+  defp tick_child(
+         child,
+         index,
+         {status, new_index, %__MODULE__{last_index: last_index} = state},
+         acc
+       )
+       when index == last_index do
+    case Behavex.Operation.preempt(child) do
+      {:ok, child} ->
+        {:halt, {status, %{state | last_index: new_index}}, [child | acc]}
+
+      :error ->
+        {:halt, {:error, state}, acc}
+    end
   end
 
-  defp tick_children(%__MODULE__{last_index: index} = state, env) when index == -1 do
-    max_index = length(get_children(env)) - 1
-    tick_children(state, env, 0, max_index)
+  defp tick_child(child, _index, {status, new_index, state}, acc) do
+    {:cont, {status, new_index, state}, [child | acc]}
   end
 
-  defp tick_children(%__MODULE__{last_index: last_index} = state, env) do
-    case tick_child(env, last_index) do
-      {:ok, :running, env} ->
-        {:ok, :running, %{state | last_index: last_index}, env}
-
-      {:ok, :failure, env} ->
-        with {:ok, env} <- preempt_child(env, last_index) do
-          tick_children(%{state | last_index: -1}, env)
+  defp tick_child(child, index, %__MODULE__{} = state, acc) do
+    case Behavex.Operation.tick(child) do
+      {:ok, status, child} when status in [:running, :success] ->
+        if state.last_index == -1 do
+          {:halt, {status, %{state | last_index: index}}, [child | acc]}
+        else
+          {:cont, {status, index, state}, [child | acc]}
         end
 
-      {:ok, :success, env} ->
-        {:ok, :success, %{state | last_index: -1}, env}
-    end
-
-    max_index = length(get_children(env)) - 1
-    tick_children(state, env, last_index, max_index)
-  end
-
-  defp tick_children(state, env, index, max_index) when index == max_index do
-    case tick_child(env, max_index) do
-      {:ok, status, env} ->
-        {:ok, status, %{state | last_index: -1}, env}
+      {:ok, :failure, child} ->
+        {:cont, state, [child | acc]}
 
       :error ->
-        :error
+        {:halt, {:error, state}, acc}
     end
   end
 
-  defp tick_children(state, env, index, max_index) do
-    case tick_child(env, index) do
-      {:ok, :running, env} ->
-        {:ok, :running, %{state | last_index: index}, env}
-
-      {:ok, :failure, env} ->
-        tick_children(state, env, index + 1, max_index)
-
-      {:ok, :success, env} ->
-        {:ok, :success, %{state | last_index: -1}, env}
+  defp preempt_child(child, _index, state, acc) do
+    case Behavex.Operation.preempt(child) do
+      {:ok, new_child} ->
+        {:cont, state, [new_child | acc]}
 
       :error ->
-        :error
+        {:halt, {:error, state}, [child | acc]}
     end
   end
 end

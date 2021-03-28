@@ -1,7 +1,12 @@
 defmodule Behavex.ErrorOperation do
   use Behavex.Operation
 
-  def init(_), do: {:ok, 1}
+  @impl true
+  def init(_), do: {:ok, nil}
 
-  def on_tick(1, _), do: :error
+  @impl true
+  def on_tick(_, _), do: :error
+
+  @impl true
+  def on_preempt(_, _), do: :error
 end

@@ -1,59 +1,63 @@
 defmodule Behavex.Operations.Sequence do
+  @moduledoc """
+  A sequence will progressively tick over each of its children so long as each child returns
+  `success`. If any child returns `failure` or `running` the sequence will halt and the parent
+  will adopt the result of this child. If it reaches the last child, it returns with that
+  result regardless.
+  """
   use Behavex.Operation
 
-  defstruct last_index: -1
+  @impl true
+  def init(_), do: {:ok, nil}
 
   @impl true
-  def init(_) do
-    {:ok, %__MODULE__{}}
-  end
+  def children_allowed?(_state), do: true
 
   @impl true
-  def children_allowed?(%__MODULE__{}), do: true
-
-  @impl true
-  def on_tick(%__MODULE__{} = state, env) do
-    tick_children(state, env)
-  end
-
-  @impl true
-  def teardown(%__MODULE__{} = state, _old_status, _new_status, env) do
-    {:ok, state, env}
-  end
-
-  defp tick_children(%__MODULE__{last_index: index} = state, env) when index == -1 do
-    max_index = length(get_children(env)) - 1
-    tick_children(state, env, 0, max_index)
-  end
-
-  defp tick_children(%__MODULE__{last_index: last_index} = state, env) do
-    max_index = length(get_children(env)) - 1
-    tick_children(state, env, last_index, max_index)
-  end
-
-  defp tick_children(state, env, index, max_index) when index == max_index do
-    case tick_child(env, max_index) do
-      {:ok, status, env} ->
-        {:ok, status, %{state | last_index: -1}, env}
-
-      :error ->
+  def on_tick(state, env) do
+    case update_child_states(env, state, &tick_child/4) do
+      {{:error, _state}, _env} ->
         :error
+
+      {{status, state}, env} ->
+        {:ok, status, state, env}
+
+      {state, env} ->
+        {:ok, :success, state, env}
     end
   end
 
-  defp tick_children(state, env, index, max_index) do
-    case tick_child(env, index) do
-      {:ok, :running, env} ->
-        {:ok, :running, %{state | last_index: index}, env}
+  @impl true
+  def on_preempt(state, env) do
+    case update_child_states(env, state, &preempt_child/4) do
+      {{:error, _state}, _env} ->
+        :error
 
-      {:ok, :failure, env} ->
-        {:ok, :failure, %{state | last_index: -1}, env}
+      {state, env} ->
+        {:ok, state, env}
+    end
+  end
 
-      {:ok, :success, env} ->
-        tick_children(state, env, index + 1, max_index)
+  defp tick_child(child, _index, state, acc) do
+    case Behavex.Operation.tick(child) do
+      {:ok, status, child} when status in [:failure, :running] ->
+        {:halt, {status, state}, [child | acc]}
+
+      {:ok, :success, child} ->
+        {:cont, state, [child | acc]}
 
       :error ->
-        :error
+        {:halt, {:error, state}, [child | acc]}
+    end
+  end
+
+  defp preempt_child(child, _index, state, acc) do
+    case Behavex.Operation.preempt(child) do
+      {:ok, new_child} ->
+        {:cont, state, [new_child | acc]}
+
+      :error ->
+        {:halt, {:error, state}, [child | acc]}
     end
   end
 end

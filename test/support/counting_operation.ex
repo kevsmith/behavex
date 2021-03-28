@@ -1,18 +1,23 @@
 defmodule Behavex.CountingOperation do
   use Behavex.Operation
 
-  def init([max_count]), do: {:ok, {0, max_count}}
+  defstruct count: 0, max_count: 0
 
-  def on_tick({max_count, max_count}, env) do
-    {:ok, :success, {0, max_count}, env}
+  @impl true
+  def init([max_count]), do: {:ok, %__MODULE__{count: max_count, max_count: max_count}}
+
+  @impl true
+  def on_tick(%__MODULE__{count: 0} = state, env) do
+    {:ok, :success, %{state | count: state.max_count}, env}
   end
 
-  def on_tick({count, max_count}, env) do
-    {:ok, :running, {count + 1, max_count}, env}
+  @impl true
+  def on_tick(state, env) do
+    {:ok, :running, %{state | count: state.count - 1}, env}
   end
 
-  def teardown(state, env) do
-    Logger.debug("#{__MODULE__}:#{__ENV__.line} teardown")
-    {:ok, state, env}
+  @impl true
+  def on_preempt(state, env) do
+    {:ok, %{state | count: state.max_count}, env}
   end
 end

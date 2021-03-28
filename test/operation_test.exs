@@ -30,121 +30,43 @@ defmodule Behavex.OperationTest do
     assert :error = mock_operation()
   end
 
-  test "prepare/1 is called on first tick" do
-    MockOperation
-    |> mockfn(:init, [], {:ok, nil})
-    |> mockfn(:children_allowed?, nil, false)
-    |> mockfn(:prepare, nil, {:ok, 1})
-    |> expect(:on_tick, fn 1, env -> {:ok, :running, 2, env} end)
-
-    {:ok, op} = mock_operation()
-    {:ok, :running, _} = ticks(op, 1)
-  end
-
-  test "returning :error from prepare/1 aborts operation" do
-    MockOperation
-    |> mockfn(:init, [], {:ok, 1})
-    |> mockfn(:children_allowed?, 1, false)
-    |> mockfn(:prepare, 1, :error)
-
-    {:ok, op} = mock_operation()
-    :error = ticks(op, 1)
-  end
-
-  test "teardown/1 is called after :success" do
-    MockOperation
-    |> expect(:init, fn _ -> {:ok, nil} end)
-    |> expect(:children_allowed?, fn _ -> false end)
-    |> expect(:prepare, fn nil -> {:ok, 1} end)
-    |> expect(:on_tick, fn 1, env -> {:ok, :success, 2, env} end)
-    |> expect(:teardown, fn 2, :invalid, :success, env -> {:ok, 3, env} end)
-
-    {:ok, op} = mock_operation()
-    {:ok, :success, _} = ticks(op, 1)
-  end
-
-  test "teardown/1 is called after :failure" do
-    MockOperation
-    |> expect(:init, fn _ -> {:ok, nil} end)
-    |> expect(:children_allowed?, fn _ -> false end)
-    |> expect(:prepare, fn nil -> {:ok, 1} end)
-    |> expect(:on_tick, fn 1, env -> {:ok, :failure, 2, env} end)
-    |> expect(:teardown, fn 2, :invalid, :failure, env -> {:ok, 3, env} end)
-
-    {:ok, op} = mock_operation()
-    {:ok, :failure, _} = ticks(op, 1)
-  end
-
-  test "returning :error from teardown/1 aborts operation" do
-    MockOperation
-    |> expect(:init, fn _ -> {:ok, 1} end)
-    |> expect(:children_allowed?, fn _ -> false end)
-    |> expect(:prepare, fn 1 -> {:ok, 2} end)
-    |> expect(:on_tick, fn 2, env -> {:ok, :success, 3, env} end)
-    |> expect(:teardown, fn 3, :invalid, :success, _env -> :error end)
-
-    {:ok, op} = mock_operation()
-    :error = ticks(op, 1)
-  end
-
   test "returning :running from on_tick/2 keeps operation alive" do
     MockOperation
     |> expect(:init, fn _ -> {:ok, 1} end)
     |> expect(:children_allowed?, fn _ -> false end)
-    |> expect(:prepare, fn 1 -> {:ok, 2} end)
+    |> expect(:on_tick, fn 1, env -> {:ok, :running, 2, env} end)
     |> expect(:on_tick, fn 2, env -> {:ok, :running, 3, env} end)
-    |> expect(:on_tick, fn 3, env -> {:ok, :running, 4, env} end)
-    |> expect(:on_tick, fn 4, env -> {:ok, :failure, 5, env} end)
-    |> expect(:teardown, fn 5, :running, :failure, env -> {:ok, 6, env} end)
+    |> expect(:on_tick, fn 3, env -> {:ok, :failure, 4, env} end)
 
     {:ok, op} = mock_operation()
     {:ok, :failure, op} = ticks(op, 3)
-    assert :invalid == Operation.get_status(op)
-  end
-
-  test "returning :error from teardown/1 aborts operation after multiple ticks" do
-    MockOperation
-    |> expect(:init, fn _ -> {:ok, 1} end)
-    |> expect(:children_allowed?, fn _ -> false end)
-    |> expect(:prepare, fn 1 -> {:ok, 2} end)
-    |> expect(:on_tick, fn 2, env -> {:ok, :running, 3, env} end)
-    |> expect(:on_tick, fn 3, env -> {:ok, :success, 4, env} end)
-    |> expect(:teardown, fn 4, :running, :success, _env -> :error end)
-
-    {:ok, op} = mock_operation()
-    :error = ticks(op, 2)
+    assert :failure == Operation.get_status(op)
   end
 
   test "multiple runs follow the correct call sequence" do
     MockOperation
     |> expect(:init, fn _ -> {:ok, 1} end)
     |> expect(:children_allowed?, fn _ -> false end)
-    |> expect(:prepare, fn 1 -> {:ok, 2} end)
-    |> expect(:on_tick, fn 2, env -> {:ok, :running, 3, env} end)
-    |> expect(:on_tick, fn 3, env -> {:ok, :failure, 4, env} end)
-    |> expect(:teardown, fn 4, :running, :failure, env -> {:ok, 5, env} end)
-    |> expect(:prepare, fn 5 -> {:ok, 6} end)
-    |> expect(:on_tick, fn 6, env -> {:ok, :running, 7, env} end)
-    |> expect(:on_tick, fn 7, env -> {:ok, :success, 8, env} end)
-    |> expect(:teardown, fn 8, :running, :success, env -> {:ok, 9, env} end)
+    |> expect(:on_tick, fn 1, env -> {:ok, :running, 2, env} end)
+    |> expect(:on_tick, fn 2, env -> {:ok, :failure, 3, env} end)
+    |> expect(:on_tick, fn 3, env -> {:ok, :running, 4, env} end)
+    |> expect(:on_tick, fn 4, env -> {:ok, :success, 5, env} end)
 
     {:ok, op} = mock_operation()
     {:ok, :success, op} = ticks(op, 4)
-    assert :invalid == Operation.get_status(op)
+    assert :success == Operation.get_status(op)
   end
 
   test "adding empty children works" do
     MockOperation
     |> expect(:init, fn _ -> {:ok, 1} end)
     |> expect(:children_allowed?, fn _ -> true end)
-    |> expect(:prepare, fn 1 -> {:ok, 2} end)
-    |> expect(:on_tick, fn 2, env -> {:ok, :running, 3, env} end)
-    |> expect(:on_tick, fn 3, env -> {:ok, :failure, 4, env} end)
-    |> expect(:teardown, fn 4, :running, :failure, env -> {:ok, 5, env} end)
+    |> expect(:on_tick, fn 1, env -> {:ok, :running, 2, env} end)
+    |> expect(:on_tick, fn 2, env -> {:ok, :failure, 3, env} end)
 
     {:ok, op} = mock_operation()
     {:ok, :failure, op} = ticks(op, 2)
-    assert :invalid == Operation.get_status(op)
+    assert :failure == Operation.get_status(op)
     assert Enum.empty?(Operation.get_children(op))
   end
 
@@ -210,20 +132,6 @@ defmodule Behavex.OperationTest do
     stored_children = Operation.get_children(op)
     assert 3 == Enum.count(stored_children)
     assert ["1", "2", "3"] == Enum.map(stored_children, &Operation.get_name(&1))
-  end
-
-  test "preempting operations works" do
-    MockOperation
-    |> expect(:init, fn _ -> {:ok, 1} end)
-    |> expect(:children_allowed?, fn _ -> true end)
-    |> expect(:prepare, fn 1 -> {:ok, 2} end)
-    |> expect(:on_tick, fn 2, env -> {:ok, :running, 3, env} end)
-    |> expect(:teardown, fn 3, :running, :invalid, env -> {:ok, 4, env} end)
-
-    {:ok, op} = mock_operation()
-    {:ok, :running, op} = ticks(op, 1)
-    {:ok, op} = Operation.preempt(op)
-    assert :invalid == Operation.get_status(op)
   end
 
   test "equivalency checks work as expected" do

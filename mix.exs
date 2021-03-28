@@ -43,7 +43,9 @@ defmodule Behavex.MixProject do
         Behavex.CountingOperation,
         Behavex.ErrorOperation,
         Behavex.FailureOperation,
-        Behavex.OperationCase
+        Behavex.OperationCase,
+        Behavex.OperationStatusMismatch,
+        Inspect.Behavex.Operation
       ]
     ]
   end
