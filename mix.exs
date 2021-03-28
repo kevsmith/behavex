@@ -25,7 +25,6 @@ defmodule Behavex.MixProject do
   defp deps do
     [
       {:elixir_uuid, "~> 1.2.0"},
-      {:phoenix_pubsub, "~> 2.0.0"},
       {:shortuuid, "~> 2.1.0"},
 
       # Testing deps
