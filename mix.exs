@@ -7,9 +7,11 @@ defmodule Behavex.MixProject do
       version: "0.1.0",
       elixir: "~> 1.11",
       elixirc_paths: elixirc_paths(Mix.env()),
+      elixirc_options: [long_compilation_threshold: 2, warnings_as_errors: true],
       test_coverage: test_coverage(),
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      dialyzer: [flags: ["-Wunmatched_returns", :error_handling, :overspecs]]
     ]
   end
 
@@ -25,7 +27,9 @@ defmodule Behavex.MixProject do
   defp deps do
     [
       {:elixir_uuid, "~> 1.2.0"},
-      {:shortuuid, "~> 2.1.0"},
+
+      # Dev deps
+      {:dialyxir, "~> 1.1.0", only: [:dev, :test], runtime: false},
 
       # Testing deps
       {:mox, "~> 1.0.0", only: [:test]}
@@ -38,14 +42,15 @@ defmodule Behavex.MixProject do
   defp test_coverage() do
     [
       ignore_modules: [
+        # Skip boilerplate modules
+        Behavex.Application,
         # Skip modules in test/support
-        Behavex.CountingOperation,
-        Behavex.ErrorOperation,
-        Behavex.FailureOperation,
-        Behavex.OperationCase,
-        Behavex.OperationStatusMismatch,
-        Inspect.Behavex.Operation
-      ]
+        Behavex.CountOperation,
+        Behavex.EvenOperation,
+        Behavex.InitArgs,
+        Behavex.StaticOperation
+      ],
+      summary: [threshold: 80]
     ]
   end
 end
