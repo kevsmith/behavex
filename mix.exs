@@ -44,11 +44,13 @@ defmodule Behavex.MixProject do
       ignore_modules: [
         # Skip boilerplate modules
         Behavex.Application,
+        Behavex.InitArgs,
+        Behavex.Operation.UnknownStatusError,
         # Skip modules in test/support
         Behavex.CountOperation,
         Behavex.EvenOperation,
-        Behavex.InitArgs,
-        Behavex.StaticOperation
+        Behavex.StaticOperation,
+        Behavex.ConfigurableOperation
       ],
       summary: [threshold: 80]
     ]

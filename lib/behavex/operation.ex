@@ -1,3 +1,12 @@
+defmodule Behavex.Operation.UnknownStatusError do
+  @moduledoc """
+  Indicates an operation's `on_tick/1` callback returned an unknown status.
+
+  Allowed statuses are `:failure`, `:running`, and `:success`.
+  """
+  defexception [:message]
+end
+
 defmodule Behavex.Operation do
   @moduledoc """
   Single behavior tree node. Provides execution callbacks only.
@@ -16,6 +25,8 @@ defmodule Behavex.Operation do
 
   defstruct cb: nil, cb_state: nil, status: :invalid
 
+  alias Behavex.Operation.UnknownStatusError
+
   @typedoc """
   Runtime state information
   """
@@ -28,6 +39,8 @@ defmodule Behavex.Operation do
   use GenServer
 
   alias Behavex.InitArgs
+
+  @allowed_statuses [:failure, :running, :success]
 
   @doc """
   Starts an `Behavex.Operation`-based node and links its process to the caller.
@@ -85,6 +98,7 @@ defmodule Behavex.Operation do
       cb_state ->
         case state.cb.on_tick(cb_state) do
           {:ok, status, new_cb_state} ->
+            validate_status!(status)
             {:reply, {:ok, status}, %{state | cb_state: new_cb_state, status: status}}
 
           :error ->
@@ -122,6 +136,11 @@ defmodule Behavex.Operation do
   end
 
   defp maybe_reset(_status, _cb, cb_state), do: cb_state
+
+  defp validate_status!(status) when status in @allowed_statuses, do: :ok
+
+  defp validate_status!(status),
+    do: raise(UnknownStatusError, message: "Callback returned uknown status '#{status}'")
 
   defp start_children([], acc, _tree_id), do: {:ok, Enum.reverse(acc)}
 

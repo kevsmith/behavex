@@ -12,4 +12,12 @@ defmodule Behavex.SequenceTest do
     assert {:ok, :failure} = Tickable.tick(tree)
     assert {:ok, 4} == Store.get(tree_id, tree_id, 0)
   end
+
+  test "returns failure if any node fails" do
+    tree_spec = Sequence.node_spec([CountOperation.node_spec([3]), CountOperation.node_spec([2])])
+    assert {:ok, tree} = Tree.start_link(tree_spec)
+    assert {:ok, :success} = Tickable.tick(tree)
+    assert {:ok, :success} = Tickable.tick(tree)
+    assert {:ok, :failure} = Tickable.tick(tree)
+  end
 end

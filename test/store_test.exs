@@ -81,7 +81,6 @@ defmodule Behavex.StoreTest do
 
   test "dumping keys works" do
     data = [a: 1, b: 2, c: 3]
-    keys = Keyword.keys(data)
     Enum.each(data, fn {key, value} -> Store.put(@tree_id, key, value) end)
     assert [:a, :b, :c] = Store.keys(@tree_id)
   end

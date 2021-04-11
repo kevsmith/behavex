@@ -53,15 +53,11 @@ defmodule Behavex.CompositeHelpers do
     end
   end
 
-  defp make_executor(strategy, return_child) do
+  defp make_executor(strategy, false) do
     fn child, _status ->
       case strategy.(child) do
         {:halt, status} ->
-          if return_child do
-            {:halt, {status, child}}
-          else
-            {:halt, status}
-          end
+          {:halt, status}
 
         {:cont, status} ->
           {:cont, status}
@@ -69,6 +65,25 @@ defmodule Behavex.CompositeHelpers do
         :cont ->
           {:ok, status} = Operation.get_status(child)
           {:cont, status}
+
+        :error ->
+          {:halt, :error}
+      end
+    end
+  end
+
+  defp make_executor(strategy, true) do
+    fn child, _status ->
+      case strategy.(child) do
+        {:halt, status} ->
+          {:halt, {status, child}}
+
+        {:cont, status} ->
+          {:cont, {status, child}}
+
+        :cont ->
+          {:ok, status} = Operation.get_status(child)
+          {:cont, {status, child}}
 
         :error ->
           {:halt, :error}
