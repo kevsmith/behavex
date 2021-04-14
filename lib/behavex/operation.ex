@@ -176,6 +176,10 @@ defmodule Behavex.Operation do
           end
 
           def node_type(), do: :operation
+
+          def on_reset(_status, state), do: {:ok, state}
+
+          defoverridable(on_reset: 2)
         end
 
       :composite ->
@@ -199,6 +203,10 @@ defmodule Behavex.Operation do
           end
 
           def node_type(), do: :composite
+
+          def on_reset(_status, state), do: {:ok, state}
+
+          defoverridable(on_reset: 2)
         end
 
       other ->
