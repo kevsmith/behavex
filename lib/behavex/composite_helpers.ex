@@ -53,6 +53,16 @@ defmodule Behavex.CompositeHelpers do
     end
   end
 
+  def tick_child(child) do
+    case Tickable.tick(child) do
+      {:ok, _status} ->
+        {:cont, :ok}
+
+      :error ->
+        {:halt, :error}
+    end
+  end
+
   defp make_executor(strategy, false) do
     fn child, _status ->
       case strategy.(child) do
